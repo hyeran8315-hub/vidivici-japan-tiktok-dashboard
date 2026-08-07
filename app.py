@@ -65,7 +65,7 @@ def classify_reaction_target(text: object) -> str:
     return "기타"
 
 
-@st.cache_data
+
 def load_data() -> pd.DataFrame:
     df = pd.read_csv(DATA_FILE)
 
