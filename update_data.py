@@ -357,6 +357,93 @@ def add_analysis(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # -----------------------------
+# 한국어 번역
+# -----------------------------
+# DEEPL_API_KEY 시크릿이 등록되어 있으면 DeepL을 사용하고,
+# 없으면 무료 번역기를 사용합니다.
+# 번역에 실패해도 해당 댓글만 비워두고 나머지는 정상 저장됩니다.
+DEEPL_KEY = os.getenv("DEEPL_API_KEY", "").strip()
+TRANSLATE_SLEEP_SECONDS = 0.4
+
+
+def translate_with_deepl(texts: list[str]) -> list[str]:
+    endpoint = (
+        "https://api-free.deepl.com/v2/translate"
+        if DEEPL_KEY.endswith(":fx")
+        else "https://api.deepl.com/v2/translate"
+    )
+    results: list[str] = []
+    # DeepL은 한 번에 여러 문장을 보낼 수 있습니다 (50개씩 나눠서 호출)
+    for start in range(0, len(texts), 50):
+        chunk = texts[start : start + 50]
+        response = requests.post(
+            endpoint,
+            data=[("text", t) for t in chunk]
+            + [("source_lang", "JA"), ("target_lang", "KO")],
+            headers={"Authorization": f"DeepL-Auth-Key {DEEPL_KEY}"},
+            timeout=60,
+        )
+        response.raise_for_status()
+        results.extend(
+            item.get("text", "") for item in response.json().get("translations", [])
+        )
+    return results
+
+
+def translate_with_free_service(texts: list[str]) -> list[str]:
+    from deep_translator import GoogleTranslator
+
+    translator = GoogleTranslator(source="ja", target="ko")
+    results: list[str] = []
+    for text in texts:
+        try:
+            results.append(translator.translate(text) or "")
+        except Exception as exc:
+            print(f"  translation failed, left blank: {exc}")
+            results.append("")
+        time.sleep(TRANSLATE_SLEEP_SECONDS)
+    return results
+
+
+def add_translations(df: pd.DataFrame) -> pd.DataFrame:
+    """번역이 비어 있는 일본어 댓글만 번역합니다. 기존 번역은 건드리지 않습니다."""
+    if "translation_ko" not in df.columns:
+        df["translation_ko"] = ""
+
+    needs = (
+        (df["language"] == "Japanese")
+        & (df["translation_ko"].isna() | (df["translation_ko"].astype(str).str.strip() == ""))
+    )
+    targets = df.loc[needs, "text"].astype(str).tolist()
+
+    if not targets:
+        print("No comments need translation.")
+        return df
+
+    print(f"Translating {len(targets)} new comments to Korean...")
+    try:
+        if DEEPL_KEY:
+            print("Using DeepL API.")
+            translated = translate_with_deepl(targets)
+        else:
+            print("Using free translation service.")
+            translated = translate_with_free_service(targets)
+    except Exception as exc:
+        print(f"WARNING: translation step failed entirely ({exc}).")
+        print("Comments will be saved without Korean translation.")
+        return df
+
+    if len(translated) != len(targets):
+        print("WARNING: translation count mismatch. Skipping translation.")
+        return df
+
+    df.loc[needs, "translation_ko"] = translated
+    filled = sum(1 for t in translated if str(t).strip())
+    print(f"Translated {filled} / {len(targets)} comments.")
+    return df
+
+
+# -----------------------------
 # 병합 / 저장
 # -----------------------------
 def load_existing() -> pd.DataFrame:
@@ -423,6 +510,9 @@ def merge_and_save(new_data: pd.DataFrame) -> None:
         "%Y-%m-%dT%H:%M:%S%z"
     )
     combined = combined.reset_index(drop=True)
+
+    # 번역이 비어 있는 신규 일본어 댓글만 번역합니다.
+    combined = add_translations(combined)
 
     # 안전장치: 기존 행 수보다 줄어들면 저장하지 않습니다.
     if len(combined) < len(existing):

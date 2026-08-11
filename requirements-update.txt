@@ -3,3 +3,4 @@ requests
 langdetect
 transformers
 torch
+deep-translator
