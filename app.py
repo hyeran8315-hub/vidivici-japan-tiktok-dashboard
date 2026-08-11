@@ -43,6 +43,7 @@ TARGET_KEYWORDS = {
     ],
     "구매·문의": [
         "欲しい", "欲しかった", "買う", "買った", "買いたい",
+        "買お", "買っちゃ", "ポチ", "再販",
         "購入", "注文", "メガ割", "Qoo10", "どこで買える",
         "どこで売ってる", "気になる", "何色", "何番",
         "おすすめ", "使ったことある", "教えて"
@@ -613,6 +614,10 @@ def horizontal_bar_chart(dataframe, label_col, color, height=240):
         st.info("표시할 데이터가 없습니다.")
         return
 
+    # 항목이 많아지면 높이를 늘려서 라벨이 생략되지 않게 합니다.
+    row_count = len(dataframe)
+    computed_height = max(height, row_count * 34)
+
     chart = (
         alt.Chart(dataframe)
         .mark_bar(
@@ -636,13 +641,14 @@ def horizontal_bar_chart(dataframe, label_col, color, height=240):
                 title=None,
                 axis=alt.Axis(
                     labelLimit=230,
+                    labelOverlap=False,
                     domain=False,
                     ticks=False,
                 ),
             ),
             tooltip=[label_col, "댓글 수"],
         )
-        .properties(height=height)
+        .properties(height=computed_height)
         .configure_view(strokeWidth=0)
     )
 
