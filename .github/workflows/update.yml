@@ -1,1 +1,50 @@
+name: Update VIDIVICI dashboard data
 
+on:
+  workflow_dispatch:
+  schedule:
+    # 매월 1일 오전 10시 (한국시간) / 01:00 UTC
+    - cron: "0 1 1 * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vidivici-monthly-update
+  cancel-in-progress: false
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-update.txt
+
+      - name: Run Apify task and update CSV
+        env:
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+          APIFY_TASK_ID: respectable_tabla_b2q~vidivici-japan
+        run: python update_data.py
+
+      - name: Commit updated data
+        run: |
+          if git diff --quiet -- vidivici_comments_final.csv; then
+            echo "No data changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add vidivici_comments_final.csv
+          git commit -m "chore: monthly TikTok data update"
+          git push
