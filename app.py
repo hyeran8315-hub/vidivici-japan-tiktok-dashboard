@@ -129,16 +129,49 @@ REACTION_REFINEMENT = {
 }
 
 
+# -----------------------------
+# 모델 피부 칭찬 보정
+# "肌"(피부)라는 단어 때문에 모델 칭찬이 제품 반응으로 새는 것을 막습니다.
+# 예: "쥬리짱 피부 갖고 싶어요"는 제품이 아니라 출연자에 대한 반응입니다.
+# 단, 메이크업·제품 단어가 함께 있으면 제품 관련으로 그대로 둡니다.
+# -----------------------------
+MODEL_SKIN_HINTS = [
+    "ちゃんの肌", "さんの肌", "羨ましい", "うらやましい",
+    "肌になりたい", "肌目指す", "肌綺麗すぎ", "肌きれいすぎ",
+    "肌がきれいすぎ", "肌が綺麗すぎ",
+]
+
+PRODUCT_CONTEXT_WORDS = [
+    "メイク", "ファンデ", "クッション", "下地", "プライマー",
+    "リップ", "チーク", "商品", "使っ", "何肌", "紹介",
+]
+
+
+def is_model_skin_praise(text):
+    value = str(text)
+    if not any(hint in value for hint in MODEL_SKIN_HINTS):
+        return False
+    if any(word in value for word in PRODUCT_CONTEXT_WORDS):
+        return False
+    return True
+
+
 def refine_reaction_target(row):
     current = str(row.get("reaction_target", ""))
+    text = str(row.get("text", ""))
+
+    # 모델 피부 칭찬이 제품 관련으로 잡혀 있으면 모델 반응으로 되돌립니다.
+    if current == "피부 표현·메이크업" and is_model_skin_praise(text):
+        return "모델·출연자 반응"
+
     if current != "기타":
         return current
-
-    text = str(row.get("text", ""))
 
     # 기존 제품·피부·구매 키워드로 먼저 재확인 (키워드 보강분 반영)
     retry = classify_reaction_target(text)
     if retry != "기타":
+        if retry == "피부 표현·메이크업" and is_model_skin_praise(text):
+            return "모델·출연자 반응"
         return retry
 
     for target, keywords in REACTION_REFINEMENT.items():

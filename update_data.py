@@ -93,6 +93,28 @@ TARGET_PRIORITY = [
 ]
 
 
+# 모델 피부 칭찬이 제품 반응으로 새는 것을 막는 보정 규칙 (app.py와 동일)
+MODEL_SKIN_HINTS = [
+    "ちゃんの肌", "さんの肌", "羨ましい", "うらやましい",
+    "肌になりたい", "肌目指す", "肌綺麗すぎ", "肌きれいすぎ",
+    "肌がきれいすぎ", "肌が綺麗すぎ",
+]
+
+PRODUCT_CONTEXT_WORDS = [
+    "メイク", "ファンデ", "クッション", "下地", "プライマー",
+    "リップ", "チーク", "商品", "使っ", "何肌", "紹介",
+]
+
+
+def is_model_skin_praise(text: str) -> bool:
+    value = str(text)
+    if not any(hint in value for hint in MODEL_SKIN_HINTS):
+        return False
+    if any(word in value for word in PRODUCT_CONTEXT_WORDS):
+        return False
+    return True
+
+
 def classify_reaction_target(text: str) -> str:
     value = str(text)
     matched = [
@@ -104,6 +126,8 @@ def classify_reaction_target(text: str) -> str:
         return "기타"
     for target in TARGET_PRIORITY:
         if target in matched:
+            if target == "피부 표현·메이크업" and is_model_skin_praise(value):
+                return "모델·출연자 반응"
             return target
     return "기타"
 
