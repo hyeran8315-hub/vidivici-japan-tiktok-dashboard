@@ -2,6 +2,7 @@
 import pandas as pd
 import streamlit as st
 import altair as alt
+from pathlib import Path
 
 
 st.set_page_config(
@@ -172,6 +173,29 @@ def classify_reaction_target(text):
     return "기타"
 
 
+# -----------------------------
+# 반응 대상 그룹 (화면 표시용 큰 축)
+# 관심 주제와 역할이 겹치지 않도록, 반응 대상은 "무엇에 반응했나"만 크게 나눕니다.
+# 세부 값(reaction_target)은 제품 KPI 계산에 그대로 사용됩니다.
+# -----------------------------
+REACTION_GROUP_MAP = {
+    "모델·출연자 반응": "모델·출연자",
+    "제품 반응": "제품",
+    "피부 표현·메이크업": "제품",
+    "구매·문의": "제품",
+    "콘텐츠 반응": "콘텐츠",
+    "일반 호감·감탄": "일반 반응",
+    "정보·질문": "일반 반응",
+    "기타": "일반 반응",
+}
+
+REACTION_GROUP_ORDER = ["모델·출연자", "제품", "콘텐츠", "일반 반응"]
+
+
+def to_reaction_group(value):
+    return REACTION_GROUP_MAP.get(str(value), "일반 반응")
+
+
 @st.cache_data
 def load_data():
     df = pd.read_csv(DATA_FILE)
@@ -202,6 +226,9 @@ def load_data():
 
     # 기존 기타 관심 주제를 댓글 내용과 반응 대상으로 재분류
     df["category"] = df.apply(refine_interest_category, axis=1)
+
+    # 화면 표시용 반응 대상 그룹 (세부 reaction_target은 KPI 계산에 그대로 사용)
+    df["reaction_group"] = df["reaction_target"].apply(to_reaction_group)
 
     # 일본 시장 전용
     df = df[df["language"] == "Japanese"].copy()
@@ -426,9 +453,20 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+caption_parts = []
+
+collected_file = Path("last_updated.txt")
+if collected_file.exists():
+    collected_at = collected_file.read_text(encoding="utf-8").strip()
+    if collected_at:
+        caption_parts.append(f"최근 수집일: {collected_at}")
+
 if "createTimeISO" in df.columns and df["createTimeISO"].notna().any():
-    data_as_of = df["createTimeISO"].max().strftime("%Y.%m.%d")
-    st.caption(f"📅 데이터 기준일: {data_as_of} (최근 수집된 댓글 작성일 기준)")
+    latest_comment = df["createTimeISO"].max().strftime("%Y.%m.%d")
+    caption_parts.append(f"최신 댓글: {latest_comment}")
+
+if caption_parts:
+    st.caption("📅 " + " · ".join(caption_parts))
 
 # -----------------------------
 # 사이드바 필터
@@ -438,7 +476,7 @@ st.sidebar.caption("시장: Japan · 분석 언어: Japanese")
 
 sentiment_options = sorted(df["sentiment"].dropna().unique().tolist())
 category_options = sorted(df["category"].dropna().unique().tolist())
-reaction_options = sorted(df["reaction_target"].dropna().unique().tolist())
+reaction_options = [g for g in REACTION_GROUP_ORDER if g in set(df["reaction_group"])]
 
 # 전체 선택 여부를 명확히 제공
 sentiment_all = st.sidebar.checkbox("감성 전체 선택", value=True)
@@ -496,7 +534,7 @@ else:
 filtered_df = df[
     df["sentiment"].isin(selected_sentiments)
     & df["category"].isin(selected_categories)
-    & df["reaction_target"].isin(selected_reactions)
+    & df["reaction_group"].isin(selected_reactions)
 ].copy()
 
 if search_text:
@@ -689,7 +727,7 @@ left, right = st.columns(2, gap="large")
 
 with left:
     st.subheader("관심 주제")
-    st.caption("제품·소비자 관심 주제")
+    st.caption("댓글이 무엇에 대해 이야기했는지")
 
     topic_df = filtered_df[
         filtered_df["category"] != "모델·출연자 반응"
@@ -706,17 +744,17 @@ with left:
 
 with right:
     st.subheader("반응 대상")
-    st.caption("제품·메이크업·출연자·구매 관심")
+    st.caption("댓글이 무엇에 반응했는지 (관심 주제와 다른 관점)")
 
     reaction_df = (
-        filtered_df["reaction_target"]
+        filtered_df["reaction_group"]
         .value_counts()
         .rename_axis("반응 대상")
         .reset_index(name="댓글 수")
     )
 
     reaction_df["색상"] = reaction_df["반응 대상"].apply(
-        lambda x: OTHER if x == "기타" else BLACK
+        lambda x: OTHER if x == "일반 반응" else BLACK
     )
 
     chart = (
@@ -790,7 +828,7 @@ if translation_enabled and "translation_ko" in top_comments.columns:
 top_data.update({
     "좋아요": top_comments["diggCount"],
     "감성": top_comments["sentiment"],
-    "반응 대상": top_comments["reaction_target"],
+    "반응 대상": top_comments["reaction_group"],
     "관심 주제": top_comments["category"],
     "영상": top_comments["videoWebUrl"],
 })
@@ -852,7 +890,7 @@ all_data.update({
     "좋아요": sorted_filtered_df["diggCount"],
     "감성": sorted_filtered_df["sentiment"],
     "관심 주제": sorted_filtered_df["category"],
-    "반응 대상": sorted_filtered_df["reaction_target"],
+    "반응 대상": sorted_filtered_df["reaction_group"],
     "TikTok": sorted_filtered_df["videoWebUrl"],
 })
 

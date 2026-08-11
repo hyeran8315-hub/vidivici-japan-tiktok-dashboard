@@ -459,6 +459,16 @@ def load_existing() -> pd.DataFrame:
     return existing
 
 
+def write_last_updated() -> None:
+    """수집이 정상 실행된 날짜를 기록합니다 (대시보드 표시용)."""
+    from datetime import datetime, timezone, timedelta
+
+    kst = timezone(timedelta(hours=9))
+    stamp = datetime.now(kst).strftime("%Y.%m.%d")
+    Path("last_updated.txt").write_text(stamp, encoding="utf-8")
+    print(f"Recorded collection date: {stamp}")
+
+
 def merge_and_save(new_data: pd.DataFrame) -> None:
     existing = load_existing()
 
@@ -490,6 +500,7 @@ def merge_and_save(new_data: pd.DataFrame) -> None:
 
     if fresh.empty:
         print("No new comments. CSV left unchanged.")
+        write_last_updated()
         return
 
     combined = pd.concat(
@@ -523,6 +534,9 @@ def merge_and_save(new_data: pd.DataFrame) -> None:
 
     combined.to_csv(OUTPUT_PATH, index=False, encoding="utf-8-sig")
     print(f"Saved {len(combined)} total comments to {OUTPUT_PATH}")
+
+    # 대시보드에 "최근 수집일"을 표시하기 위해 실행 날짜를 기록합니다.
+    write_last_updated()
 
     missing_translation = (
         combined["translation_ko"].isna() | (combined["translation_ko"] == "")
