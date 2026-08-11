@@ -229,8 +229,13 @@ def to_reaction_group(value):
     return REACTION_GROUP_MAP.get(str(value), "일반 반응")
 
 
+# 분류 로직을 수정할 때 이 값을 바꾸면 캐시가 초기화됩니다.
+# (Streamlit은 load_data 함수 본문만 감시하므로, 바깥 로직 변경은 감지하지 못합니다.)
+LOGIC_VERSION = "2026-08-11-model-skin-fix"
+
+
 @st.cache_data
-def load_data():
+def load_data(logic_version: str = LOGIC_VERSION):
     df = pd.read_csv(DATA_FILE)
 
     df["diggCount"] = pd.to_numeric(
